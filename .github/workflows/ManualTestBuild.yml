@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-15-intel
     timeout-minutes: 15
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
@@ -40,10 +40,10 @@ jobs:
           xcodebuild -version
           swiftlint version
           xcodebuild -project Whisky.xcodeproj -scheme Whisky -configuration Debug \
-            -destination 'platform=macOS,arch=arm64' -derivedDataPath "$RUNNER_TEMP/build" \
+            -destination 'generic/platform=macOS' -derivedDataPath "$RUNNER_TEMP/build" \
             -onlyUsePackageVersionsFromResolvedFile \
             CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
-            ENABLE_HARDENED_RUNTIME=NO build
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO ENABLE_HARDENED_RUNTIME=NO build
           app="$RUNNER_TEMP/build/Build/Products/Debug/Whisky.app"
           test "$(lipo -archs "$app/Contents/MacOS/Whisky")" = arm64
           test "$(plutil -extract CFBundleIdentifier raw "$app/Contents/Info.plist")" = com.jinkssg1t.WhiskyTest
