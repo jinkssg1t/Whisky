@@ -1,0 +1,59 @@
+name: Whisky manual test build
+
+on:
+  push:
+    branches: [build/gin-debug]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install SwiftLint
+        run: |
+          curl --fail --location --retry 3 \
+            https://github.com/realm/SwiftLint/releases/download/0.58.2/portable_swiftlint.zip \
+            --output "$RUNNER_TEMP/swiftlint.zip"
+          ditto -x -k "$RUNNER_TEMP/swiftlint.zip" "$RUNNER_TEMP/swiftlint"
+          echo "$RUNNER_TEMP/swiftlint" >> "$GITHUB_PATH"
+
+      - name: Isolate test bundle
+        run: |
+          sed -i '' 's/com\.isaacmarovitz\.Whisky/com.jinkssg1t.WhiskyTest/g' \
+            Whisky.xcodeproj/project.pbxproj \
+            WhiskyKit/Sources/WhiskyKit/Extensions/Bundle+Extensions.swift
+          plutil -insert CFBundleDisplayName -string 'Whisky Test' Whisky/Info.plist
+          plutil -insert SUEnableAutomaticChecks -bool NO Whisky/Info.plist
+          plutil -insert SUAllowsAutomaticUpdates -bool NO Whisky/Info.plist
+
+      - name: Build and verify app
+        run: |
+          xcodebuild -version
+          swiftlint version
+          xcodebuild -project Whisky.xcodeproj -scheme Whisky -configuration Debug \
+            -destination 'platform=macOS,arch=arm64' -derivedDataPath "$RUNNER_TEMP/build" \
+            -onlyUsePackageVersionsFromResolvedFile \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
+            ENABLE_HARDENED_RUNTIME=NO build
+          app="$RUNNER_TEMP/build/Build/Products/Debug/Whisky.app"
+          test "$(lipo -archs "$app/Contents/MacOS/Whisky")" = arm64
+          test "$(plutil -extract CFBundleIdentifier raw "$app/Contents/Info.plist")" = com.jinkssg1t.WhiskyTest
+          codesign --verify --deep --strict "$app"
+          mv "$app" "$RUNNER_TEMP/Whisky Test.app"
+          ditto -c -k --keepParent "$RUNNER_TEMP/Whisky Test.app" "$RUNNER_TEMP/Whisky-Test.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Whisky-Test
+          path: ${{ runner.temp }}/Whisky-Test.zip
+          if-no-files-found: error
+          retention-days: 7
